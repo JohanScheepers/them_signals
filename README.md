@@ -16,7 +16,7 @@ Before jumping into the code, let’s quickly look at why signals_flutter is a f
 
 * Built-in Persistence: The ecosystem includes native abstractions to sync local storage smoothly without locking your UI or forcing you to handle async delays inside your build methods.
 
-Step 1: Connecting Signals to Local Storage
+## Step 1: Connecting Signals to Local Storage
 
 Signals provides a contract called SignalsKeyValueStore. By implementing this interface, we can redirect signal updates straight into SharedPreferences.
 
@@ -40,7 +40,7 @@ class SharedPreferencesStore implements SignalsKeyValueStore {
 
 This tiny bridge enables the PersistedEnumSignal to read saved settings on startup and save modifications immediately upon mutation.
 
-Step 2: The App State Singleton
+## Step 2: The App State Singleton
 
 Instead of polluting the global namespace or drilling parameters through widgets, we create a unified, single source of truth called MyAppState.
 
@@ -89,7 +89,7 @@ Key Advantages:
 
 2. **Type Safety:** PersistedEnumSignal handles the serialization and deserialization of Dart Enums seamlessly. You don't have to map strings manually back into ThemeMode.dark.
 
-Step 3: Bootstrapping and Global Application Setup
+## Step 3: Bootstrapping and Global Application Setup
 
 In our entry point, we ensure Flutter bindings are configured and then initialize our state. Next, we wrap MaterialApp with a SignalBuilder.
 
@@ -100,7 +100,7 @@ void main() async {
   // Single initialization point for all app state.
   // Defaults to ThemeMode.system so the OS controls the theme
   // until the user explicitly picks one.
-  await AppState.instance.initialize();
+  await MyAppState.instance.initialize();
   runApp(const MyApp());
 }
 
@@ -116,7 +116,7 @@ class MyApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           title: 'Theme_Signals Demo',
           // 2. Use .value to automatically track the signal
-          themeMode: AppState.instance.themeMode.value,
+          themeMode: MyAppState.instance.themeMode.value,
           theme: MyAppTheme.lightTheme,
           darkTheme: MyAppTheme.darkTheme,
           home: const MyHomePage(),
@@ -125,85 +125,38 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
-// Simple decoupled theme data configurations
-final class MyAppTheme {
-  MyAppTheme._();
-  static ThemeData get lightTheme => ThemeData(useMaterial3: true, brightness: Brightness.light);
-  static ThemeData get darkTheme => ThemeData(useMaterial3: true, brightness: Brightness.dark);
-}
 ```
 
 Notice how clean the MaterialApp is. By reading AppState.instance.themeMode.value, SignalBuilder registers a listener automatically. Whenever the theme changes anywhere in the app, this builder will fire up instantly and apply the new configuration.
 
-Step 4: Putting it Together with a UI Toggler
+## Step 4: Building Views with SignalWidget
 
-To let users switch themes, we can implement a PopupMenuButton in our MyHomePage view. The UI checks the reactive value to showcase active checkmarks/colors and calls setThemeMode when tapped.
+Instead of creating a heavy StatefulWidget or littering code with nested inline builders, we extend SignalWidget. This component automatically tracks any signal called inside its build method (via .value) and schedules a re-render only when that specific signal updates.
 
 
 ```Dart
-class MyHomePage extends StatefulWidget {
+class MyHomePage extends SignalWidget {
   const MyHomePage({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  static const _themeOptions = [
-    (label: 'System Theme', icon: Icons.brightness_auto, mode: ThemeMode.system),
-    (label: 'Light Theme', icon: Icons.light_mode, mode: ThemeMode.light),
-    (label: 'Dark Theme', icon: Icons.dark_mode, mode: ThemeMode.dark),
-  ];
-
-  @override
   Widget build(BuildContext context) {
-    // Access the current value reactively
-    final currentMode = AppState.instance.themeMode.value;
+    final currentMode = MyAppState.instance.themeMode.value;
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('Theme_Signals Demo'),
-        actions: [
-          PopupMenuButton<ThemeMode>(
-            tooltip: 'Select theme',
-            icon: Icon(switch (currentMode) {
-              ThemeMode.light => Icons.light_mode,
-              ThemeMode.dark => Icons.dark_mode,
-              ThemeMode.system => Icons.brightness_auto,
-            }),
-            initialValue: currentMode,
-            onSelected: AppState.instance.setThemeMode,
-            itemBuilder: (context) => _themeOptions.map((option) {
-              final isSelected = currentMode == option.mode;
-              return PopupMenuItem<ThemeMode>(
-                value: option.mode,
-                child: Row(
-                  children: [
-                    Icon(
-                      option.icon,
-                      color: isSelected ? Theme.of(context).colorScheme.primary : null,
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      option.label,
-                      style: isSelected ? TextStyle(
-                        color: Theme.of(context).colorScheme.primary,
-                        fontWeight: FontWeight.bold,
-                      ) : null,
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ],
+        actions: [ThemeSelector()],
       ),
       body: Center(
-        child: Text(
-          'Theme is persisted across app restarts!\nCurrent mode: ${currentMode.name}',
-          textAlign: TextAlign.center,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Theme is persisted across app restarts!\nCurrent mode:  ${currentMode.name}',
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       ),
     );
@@ -211,7 +164,66 @@ class _MyHomePageState extends State<MyHomePage> {
 }
 ```
 
-Wrapping Up
+And the ThemeSelector
+```Dart
+class ThemeSelector extends StatelessWidget {
+  const ThemeSelector({super.key});
+
+  static const _themeOptions = [
+    (
+      label: 'System Theme',
+      icon: Icons.brightness_auto,
+      mode: ThemeMode.system,
+    ),
+    (label: 'Light Theme', icon: Icons.light_mode, mode: ThemeMode.light),
+    (label: 'Dark Theme', icon: Icons.dark_mode, mode: ThemeMode.dark),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final currentMode = MyAppState.instance.themeMode.value;
+    return PopupMenuButton<ThemeMode>(
+      tooltip: 'Select theme',
+      icon: Icon(switch (currentMode) {
+        ThemeMode.light => Icons.light_mode,
+        ThemeMode.dark => Icons.dark_mode,
+        ThemeMode.system => Icons.brightness_auto,
+      }),
+      initialValue: currentMode,
+      onSelected: MyAppState.instance.setThemeMode,
+      itemBuilder: (context) => _themeOptions
+          .map(
+            (option) => PopupMenuItem<ThemeMode>(
+              value: option.mode,
+              child: Row(
+                children: [
+                  Icon(
+                    option.icon,
+                    color: currentMode == option.mode
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    option.label,
+                    style: currentMode == option.mode
+                        ? TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                          )
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+```
+
+## Wrapping Up
 With under 150 lines of incredibly readable code, we managed to:
 
 1. Initialize a global storage adapter.
