@@ -225,3 +225,6 @@ With under 150 lines of incredibly readable code, we managed to:
 Signals provide a modern, explicit, and highly performant paradigm for building stateful Flutter apps without the weight of overly structured frameworks.
 
 Have you tried Signals in your Flutter workflows yet? Let me know your thoughts down in the comments below!
+
+
+Full code at [theme_signals](https://github.com/JohanScheepers/them_signals)
